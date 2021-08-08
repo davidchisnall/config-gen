@@ -4,6 +4,7 @@
 #include <fstream>
 #include <getopt.h>
 #include <iostream>
+#include <memory>
 #include <sstream>
 #include <unordered_set>
 
@@ -296,11 +297,10 @@ namespace
 	 * The namespace for the helpers defined in `config-generic.h`.  This can
 	 * be overridden on the command line.
 	 */
-	const char *configNamespace = "::config::detail::";
+	std::string configNamespace = "::config::detail::";
 
 	template<typename T>
 	void emit_class(Object o, std::string_view name, T &out);
-
 
 	/**
 	 * Schema visitor.  This visits a schema and collects the information
@@ -313,23 +313,23 @@ namespace
 		 * of the other properties are non-owning string views and sometimes
 		 * they need an owned string to reference.
 		 */
-		std::string        className;
+		std::string className;
 
 		public:
 		/**
 		 * The return type for the accessor for this schema.
 		 */
-		std::string_view   return_type;
+		std::string_view return_type;
 
 		/**
 		 * The adaptor type to use for this schema.
 		 */
-		std::string_view   adaptor;
+		std::string_view adaptor;
 
 		/**
-		 * The namespace in which the adaptor is defined. 
+		 * The namespace in which the adaptor is defined.
 		 */
-		std::string_view   adaptorNamespace = configNamespace;
+		std::string_view adaptorNamespace = configNamespace;
 
 		/**
 		 * The lifetime attribute for this property, if one is required.  For
@@ -337,12 +337,12 @@ namespace
 		 * underlying schema.  Other types are typically either owning
 		 * references or value types.
 		 */
-		std::string_view   lifetimeAttribute;
+		std::string_view lifetimeAttribute;
 
 		/**
 		 * The name of this property.
 		 */
-		std::string_view   name;
+		std::string_view name;
 
 		/**
 		 * Any new types that were declared to handle this property.
@@ -473,14 +473,16 @@ namespace
 			auto          items = a.items();
 			items.get().visit(item);
 			className = configNamespace;
-			className += "::Range<";
+			className += "Range<";
 			className += item.return_type;
 			className += ", ";
+			className += item.adaptorNamespace;
 			className += item.adaptor;
 			className += ", true>";
 			return_type      = className;
 			adaptor          = className;
-			adaptorNamespace = "";
+			adaptor          = adaptor.substr(configNamespace.size());
+			adaptorNamespace = configNamespace;
 		}
 	};
 
@@ -493,9 +495,9 @@ namespace
 	void emit_class(Object o, std::string_view name, T &out)
 	{
 		// Place to write new types.
-		std::stringstream                    types;
+		std::stringstream types;
 		// Place to write methods.
-		std::stringstream                    methods;
+		std::stringstream methods;
 		// Set of the required properties.
 		std::unordered_set<std::string_view> required_properties;
 
@@ -559,7 +561,7 @@ namespace
 				methods << "std::optional<" << v.return_type << "> "
 				        << method_name << "() const " << v.lifetimeAttribute
 				        << " {"
-				        << "return " << configNamespace << "::make_optional<"
+				        << "return " << configNamespace << "make_optional<"
 				        << v.adaptorNamespace << v.adaptor << ", "
 				        << v.return_type << ">(obj[\"" << prop_name << "\"]);}";
 			}
@@ -575,9 +577,7 @@ namespace
 
 int main(int argc, char **argv)
 {
-
 	std::unique_ptr<std::ofstream> file_out{nullptr};
-
 
 	static struct option long_options[] = {
 	  {"config-class", required_argument, nullptr, 'c'},
@@ -608,6 +608,16 @@ int main(int argc, char **argv)
 				case 'd':
 				{
 					configNamespace = optarg;
+					// The config namespace must end with a double colon because
+					// it's concatenated into strings immediately followed by a
+					// class name but we shouldn't require the user to include
+					// it.
+					if ((configNamespace.size() < 2) ||
+					    (configNamespace.rfind("::") !=
+					     (configNamespace.size() - 2)))
+					{
+						configNamespace += "::";
+					}
 					fprintf(stderr, "Config namespace: '%s'\n", optarg);
 					break;
 				}
@@ -624,8 +634,8 @@ int main(int argc, char **argv)
 			}
 		}
 	}
-	 argc -= optind;
-     argv += optind;
+	argc -= optind;
+	argv += optind;
 
 	if (argc < 1)
 	{

@@ -18,7 +18,7 @@ foreach(TEST_NAME ${TESTS})
 	set(TEST_HEADER "${TEST_NAME}.h")
 	set(TEST_EXPECTED "${TEST_NAME}.conf.expected")
 	add_custom_command(OUTPUT ${TEST_HEADER}
-		COMMAND config-gen "${CMAKE_CURRENT_SOURCE_DIR}/${TEST_NAME}.conf" "-o" ${TEST_HEADER}
+		COMMAND config-gen "-o" ${TEST_HEADER} "-e" "${CMAKE_CURRENT_SOURCE_DIR}/${TEST_NAME}.conf"
 		COMMENT "Generating test header ${TEST_HEADER}"
 		MAIN_DEPENDENCY "${TEST_NAME}.conf")
 	if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${TEST_SRC}")
