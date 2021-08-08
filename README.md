@@ -8,7 +8,7 @@ format, rather than plain JSON).
 Usage
 -----
 
-The built `config-gen` tool is invoked with any of the following options, followed by the path toa a JSON Schema file:
+The built `config-gen` tool is invoked with any of the following options, followed by the path to a JSON Schema file:
 
  - `--config-class` or `-c` followed by the name of the class to generate for the config.
    If this is not specified then the class will be called `Config`.
