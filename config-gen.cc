@@ -19,19 +19,18 @@ namespace Schema
 	struct Integer;
 	struct Boolean;
 	struct Number;
+	struct Duration;
 
 	/**
 	 * Base class for parts of a JSON Schema.
 	 */
-	class SchemaBase
+	struct SchemaBase
 	{
-		protected:
 		/**
 		 * The UCL object that this represents.
 		 */
 		UCLPtr obj;
 
-		public:
 		/**
 		 * Constructor, captures an owning reference to a UCL object.
 		 */
@@ -48,6 +47,7 @@ namespace Schema
 		                                     NamedType<"string", String>,
 		                                     NamedType<"integer", Integer>,
 		                                     NamedType<"boolean", Boolean>,
+		                                     NamedType<"duration", Duration>,
 		                                     NamedType<"number", Number>>;
 
 		/**
@@ -89,6 +89,10 @@ namespace Schema
 			 * A JSON boolean.
 			 */
 			TypeBool,
+			/**
+			 * A duration in seconds.
+			 */
+			TypeDuration,
 		};
 
 		/**
@@ -102,6 +106,7 @@ namespace Schema
 		                           Enum{"string", TypeString},
 		                           Enum{"integer", TypeInteger},
 		                           Enum{"boolean", TypeBool},
+		                           Enum{"duration", TypeDuration},
 		                           Enum{"number", TypeNumber}>>;
 
 		/**
@@ -217,6 +222,14 @@ namespace Schema
 	};
 
 	/**
+	 * A duration, allows all of the constraints on integers.
+	 */
+	struct Duration : Number
+	{
+		using Number::Number;
+	};
+
+	/**
 	 * Boolean, a trivial type in JSON schema.
 	 */
 	struct Boolean : public SchemaBase
@@ -308,23 +321,16 @@ namespace
 	 */
 	class SchemaVisitor
 	{
-		/**
-		 * The name of a class emitted by this schema.  This exists because all
-		 * of the other properties are non-owning string views and sometimes
-		 * they need an owned string to reference.
-		 */
-		std::string className;
-
 		public:
 		/**
 		 * The return type for the accessor for this schema.
 		 */
-		std::string_view return_type;
+		std::string returnType;
 
 		/**
 		 * The adaptor type to use for this schema.
 		 */
-		std::string_view adaptor;
+		std::string adaptor;
 
 		/**
 		 * The namespace in which the adaptor is defined.
@@ -376,8 +382,8 @@ namespace
 			}
 			if (!isInteger)
 			{
-				return_type = "double";
-				adaptor     = "DoubleAdaptor";
+				returnType = "double";
+				adaptor    = "DoubleAdaptor";
 				return;
 			}
 			int64_t min = std::numeric_limits<int64_t>::min();
@@ -395,8 +401,8 @@ namespace
 				  if ((min >= std::numeric_limits<decltype(intty)>::min()) &&
 				      (max <= std::numeric_limits<decltype(intty)>::max()))
 				  {
-					  return_type = ty;
-					  adaptor     = a;
+					  returnType = ty;
+					  adaptor    = a;
 				  }
 			  };
 			try_type(int64_t(), "int64_t", "Int64Adaptor");
@@ -414,7 +420,7 @@ namespace
 		 */
 		void operator()(String)
 		{
-			return_type       = "std::string_view";
+			returnType        = "std::string_view";
 			adaptor           = "StringViewAdaptor";
 			lifetimeAttribute = "CONFIG_LIFETIME_BOUND";
 		}
@@ -424,8 +430,8 @@ namespace
 		 */
 		void operator()(Boolean)
 		{
-			return_type = "bool";
-			adaptor     = "BoolAdaptor";
+			returnType = "bool";
+			adaptor    = "BoolAdaptor";
 		}
 
 		/**
@@ -434,6 +440,28 @@ namespace
 		void operator()(Integer i)
 		{
 			handleNumber(i, true);
+		}
+
+		/**
+		 * Handle a duration.
+		 */
+		void operator()(Duration d)
+		{
+			// Find the numeric type that satisfies the constraints.
+			handleNumber(d, false);
+			// Wrap the number type to give a duration.
+			std::string type = returnType;
+			adaptor          = "DurationAdaptor<";
+			adaptor += type;
+			adaptor += '>';
+			returnType = "std::chrono::duration<";
+			returnType += type;
+			returnType += '>';
+			ucl_object_replace_key((ucl_object_t *)d.obj,
+			                       ucl_object_fromstring("number"),
+			                       "type",
+			                       4,
+			                       false);
 		}
 
 		/**
@@ -450,11 +478,10 @@ namespace
 		 */
 		void operator()(Object o)
 		{
-			className = name;
-			className += "Class";
-			emit_class(o, className, types);
-			return_type      = className;
-			adaptor          = className;
+			returnType = name;
+			returnType += "Class";
+			emit_class(o, returnType, types);
+			adaptor          = returnType;
 			adaptorNamespace = "";
 		}
 
@@ -472,15 +499,14 @@ namespace
 			SchemaVisitor item(itemName, types);
 			auto          items = a.items();
 			items.get().visit(item);
-			className = configNamespace;
-			className += "Range<";
-			className += item.return_type;
-			className += ", ";
-			className += item.adaptorNamespace;
-			className += item.adaptor;
-			className += ", true>";
-			return_type      = className;
-			adaptor          = className;
+			returnType = configNamespace;
+			returnType += "Range<";
+			returnType += item.returnType;
+			returnType += ", ";
+			returnType += item.adaptorNamespace;
+			returnType += item.adaptor;
+			returnType += ", true>";
+			adaptor          = returnType;
 			adaptor          = adaptor.substr(configNamespace.size());
 			adaptorNamespace = configNamespace;
 		}
@@ -542,6 +568,7 @@ namespace
 			if (auto description = prop.description())
 			{
 				methods << "\n/**\n* " << *description << "\n*/\n";
+				ucl_object_delete_key(prop.obj, "description");
 			}
 
 			// Visit the schema describing this property to collect any types.
@@ -551,19 +578,19 @@ namespace
 			// return a `std::optional<T>`.
 			if (isRequired)
 			{
-				methods << v.return_type << ' ' << method_name << "() const "
+				methods << v.returnType << ' ' << method_name << "() const "
 				        << v.lifetimeAttribute << " {"
 				        << "return " << v.adaptorNamespace << v.adaptor
 				        << "(obj[\"" << prop_name << "\"]);}";
 			}
 			else
 			{
-				methods << "std::optional<" << v.return_type << "> "
+				methods << "std::optional<" << v.returnType << "> "
 				        << method_name << "() const " << v.lifetimeAttribute
 				        << " {"
 				        << "return " << configNamespace << "make_optional<"
 				        << v.adaptorNamespace << v.adaptor << ", "
-				        << v.return_type << ">(obj[\"" << prop_name << "\"]);}";
+				        << v.returnType << ">(obj[\"" << prop_name << "\"]);}";
 			}
 			methods << "\n\n";
 		}
@@ -658,37 +685,42 @@ int main(int argc, char **argv)
 
 	auto obj = ucl_parser_get_object(p);
 	ucl_parser_free(p);
-	Root  conf(obj);
-	char *schemaCString =
-	  reinterpret_cast<char *>(ucl_object_emit(obj, UCL_EMIT_JSON_COMPACT));
-	std::string schema(schemaCString);
-	free(schemaCString);
-	// Escape as a C string:
-	auto replace = [&](std::string_view search, std::string_view replace) {
-		size_t pos = 0;
-		while ((pos = schema.find(search, pos)) != std::string::npos)
-		{
-			schema.replace(pos, search.length(), replace);
-			pos += replace.length();
-		}
-	};
-	replace("\\", "\\\\");
-	replace("\"", "\\\"");
-	replace("\n", "\\n");
+	Root conf(obj);
 	ucl_object_unref(obj);
 
 	// Generic headers
-	out << "#include \"config-generic.h\"\n\n";
+	out << "#pragma once\n\n" out << "#include \"config-generic.h\"\n\n";
 	out << "#include <variant>\n\n";
-	out << "// Machine generated by "
-	       "https://github.com/davidchisnall/config-gen DO NOT EDIT\n";
+	out << "// Machine generated from " << in_filename
+	    << " by "
+	       "https://github.com/davidchisnall/config-gen DO NOT EDIT\n\n";
 	out << "#ifdef CONFIG_NAMESPACE_BEGIN\nCONFIG_NAMESPACE_BEGIN\n#endif\n";
 
 	// Emit the config class
+	if (auto desc = conf.description())
+	{
+		out << "/**\n* " << *desc << "\n*/";
+	}
 	emit_class(conf, configClass, out);
 	// If we've been asked to embed the schema and a constructor, do so
 	if (embedSchema)
 	{
+		char *schemaCString =
+		  reinterpret_cast<char *>(ucl_object_emit(obj, UCL_EMIT_JSON_COMPACT));
+		std::string schema(schemaCString);
+		free(schemaCString);
+		// Escape as a C string:
+		auto replace = [&](std::string_view search, std::string_view replace) {
+			size_t pos = 0;
+			while ((pos = schema.find(search, pos)) != std::string::npos)
+			{
+				schema.replace(pos, search.length(), replace);
+				pos += replace.length();
+			}
+		};
+		replace("\\", "\\\\");
+		replace("\"", "\\\"");
+		replace("\n", "\\n");
 		out << "inline std::variant<" << configClass
 		    << ", ucl_schema_error> "
 		       "make_config(ucl_object_t *obj) {"

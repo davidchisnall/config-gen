@@ -33,7 +33,7 @@ namespace CONFIG_DETAIL_NAMESPACE
 		/**
 		 * The UCL object that this manages a reference to.
 		 */
-		const ucl_object_t *obj = nullptr;
+		ucl_object_t *obj = nullptr;
 
 		public:
 		/**
@@ -74,7 +74,7 @@ namespace CONFIG_DETAIL_NAMESPACE
 		 * Assignment operator. Replaces currently managed object with a new
 		 * one.
 		 */
-		UCLPtr &operator=(const ucl_object_t *o)
+		UCLPtr &operator=(ucl_object_t *o)
 		{
 			o = ucl_object_ref(o);
 			ucl_object_unref(const_cast<ucl_object_t *>(obj));
@@ -88,6 +88,14 @@ namespace CONFIG_DETAIL_NAMESPACE
 		UCLPtr &operator=(const UCLPtr o)
 		{
 			return (*this = o.obj);
+		}
+
+		/**
+		 * Implicit conversion operator, returns the underlying object.
+		 */
+		operator ucl_object_t *()
+		{
+			return obj;
 		}
 
 		/**
@@ -332,6 +340,7 @@ namespace CONFIG_DETAIL_NAMESPACE
 	 * Adaptors are intended to be short-lived, created only as temporaries,
 	 * and must not outlive the object that they are adapting.
 	 */
+	template<typename T>
 	class DurationAdaptor
 	{
 		/**
@@ -350,11 +359,10 @@ namespace CONFIG_DETAIL_NAMESPACE
 		 * Implicit cast operator, returns the underlying object as a duration
 		 * in seconds.
 		 */
-		operator std::chrono::seconds()
+		operator std::chrono::duration<T>()
 		{
-			assert(ucl_object_type(obj) == UCL_TIME);
-			return std::chrono::seconds(
-			  static_cast<long long>(ucl_object_todouble(obj)));
+			return std::chrono::duration<T>(
+			  static_cast<T>(ucl_object_todouble(obj)));
 		}
 	};
 
