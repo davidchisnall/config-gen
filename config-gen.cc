@@ -121,7 +121,7 @@ namespace Schema
 		}
 
 		/**
-		 * Returns the description of this schame.
+		 * Returns the description of this schema.
 		 */
 		std::optional<std::string_view> description()
 		{
@@ -541,7 +541,7 @@ namespace
 			// If there is a description, put it in a doc comment
 			if (auto description = prop.description())
 			{
-				methods << "\n/** " << *description << " */\n";
+				methods << "\n/**\n* " << *description << "\n*/\n";
 			}
 
 			// Visit the schema describing this property to collect any types.
