@@ -689,12 +689,13 @@ int main(int argc, char **argv)
 	ucl_object_unref(obj);
 
 	// Generic headers
-	out << "#pragma once\n\n" out << "#include \"config-generic.h\"\n\n";
-	out << "#include <variant>\n\n";
-	out << "// Machine generated from " << in_filename
+	out << "#pragma once\n\n"
+	    << "#include \"config-generic.h\"\n\n"
+	    << "#include <variant>\n\n"
+	    << "// Machine generated from " << in_filename
 	    << " by "
-	       "https://github.com/davidchisnall/config-gen DO NOT EDIT\n\n";
-	out << "#ifdef CONFIG_NAMESPACE_BEGIN\nCONFIG_NAMESPACE_BEGIN\n#endif\n";
+	       "https://github.com/davidchisnall/config-gen DO NOT EDIT\n\n"
+	    << "#ifdef CONFIG_NAMESPACE_BEGIN\nCONFIG_NAMESPACE_BEGIN\n#endif\n";
 
 	// Emit the config class
 	if (auto desc = conf.description())
